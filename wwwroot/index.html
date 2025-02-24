@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>IoT Dashboard Test</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/7.0.0/signalr.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .card { border: 1px solid #ccc; padding: 15px; margin: 10px; border-radius: 5px; }
+        .sensor-data { background-color: #f0f8ff; }
+        .anomaly-alert { background-color: #fff0f0; }
+        button { padding: 10px; margin: 5px; cursor: pointer; }
+        #connection-status { padding: 10px; margin-bottom: 20px; }
+        .connected { background-color: #d4edda; }
+        .disconnected { background-color: #f8d7da; }
+    </style>
+</head>
+<body>
+    <div id="connection-status" class="disconnected">Bağlantı durumu: Bağlı değil</div>
+    
+    <div>
+        <button onclick="sendTestSensorData()">Test Sensör Verisi Gönder</button>
+        <button onclick="sendTestAnomalyAlert()">Test Anomali Uyarısı Gönder</button>
+    </div>
+
+    <h3>Son Alınan Veriler:</h3>
+    <div id="messages"></div>
+
+    <script>
+        // API URL'ini tanımla
+        const apiBaseUrl = 'http://localhost:5000';
+        console.log('API URL:', apiBaseUrl);
+
+        const connection = new signalR.HubConnectionBuilder()
+            .withUrl(`${apiBaseUrl}/dashboardHub`)
+            .configureLogging(signalR.LogLevel.Debug)
+            .build();
+
+        connection.on("Connected", (connectionId) => {
+            document.getElementById("connection-status").className = "connected";
+            document.getElementById("connection-status").innerText = `Bağlantı durumu: Bağlı (ID: ${connectionId})`;
+            console.log("SignalR Bağlantısı başarılı:", connectionId);
+        });
+
+        connection.on("UserDisconnected", (connectionId) => {
+            console.log(`Kullanıcı bağlantısı kesildi: ${connectionId}`);
+            document.getElementById("connection-status").className = "disconnected";
+            document.getElementById("connection-status").innerText = "Bağlantı durumu: Bağlantı kesildi";
+        });
+
+        connection.on("ReceiveSensorData", (data) => {
+            console.log("Sensör verisi alındı:", data);
+            const messagesDiv = document.getElementById("messages");
+            const messageDiv = document.createElement("div");
+            messageDiv.className = "card sensor-data";
+            messageDiv.innerHTML = `
+                <h4>Sensör Verisi - ${data.machineId}</h4>
+                <p>Zaman: ${new Date(data.timestamp).toLocaleString()}</p>
+                <pre>${JSON.stringify(data.sensors, null, 2)}</pre>
+            `;
+            messagesDiv.insertBefore(messageDiv, messagesDiv.firstChild);
+        });
+
+        connection.on("ReceiveAnomalyAlert", (alert) => {
+            console.log("Anomali uyarısı alındı:", alert);
+            const messagesDiv = document.getElementById("messages");
+            const messageDiv = document.createElement("div");
+            messageDiv.className = "card anomaly-alert";
+            messageDiv.innerHTML = `
+                <h4>Anomali Uyarısı - ${alert.machineId}</h4>
+                <p>Zaman: ${new Date(alert.timestamp).toLocaleString()}</p>
+                <p>Skor: ${alert.score}</p>
+                <p>Seviye: ${alert.alarmLevel}</p>
+                <p>Mesajlar:</p>
+                <ul>
+                    ${alert.messages.map(msg => `<li>${msg}</li>`).join("")}
+                </ul>
+                <pre>${JSON.stringify(alert.sensorData, null, 2)}</pre>
+            `;
+            messagesDiv.insertBefore(messageDiv, messagesDiv.firstChild);
+        });
+
+        // Bağlantıyı başlat
+        function startConnection() {
+            connection.start()
+                .then(() => {
+                    console.log("SignalR Bağlantısı Başarılı");
+                    document.getElementById("connection-status").className = "connected";
+                    document.getElementById("connection-status").innerText = "Bağlantı durumu: Bağlanıyor...";
+                })
+                .catch(err => {
+                    console.error("SignalR Bağlantı Hatası:", err);
+                    document.getElementById("connection-status").className = "disconnected";
+                    document.getElementById("connection-status").innerText = `Bağlantı hatası: ${err.message}`;
+                    // 5 saniye sonra yeniden dene
+                    setTimeout(startConnection, 5000);
+                });
+        }
+
+        startConnection();
+
+        async function sendTestSensorData() {
+            try {
+                const response = await fetch(`${apiBaseUrl}/api/test/sensor-data`, {
+                    method: "POST",
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                console.log("Test sensör verisi gönderildi");
+            } catch (err) {
+                console.error("Hata:", err);
+                alert("Sensör verisi gönderilirken hata oluştu: " + err.message);
+            }
+        }
+
+        async function sendTestAnomalyAlert() {
+            try {
+                const response = await fetch(`${apiBaseUrl}/api/test/anomaly-alert`, {
+                    method: "POST",
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                console.log("Test anomali uyarısı gönderildi");
+            } catch (err) {
+                console.error("Hata:", err);
+                alert("Anomali uyarısı gönderilirken hata oluştu: " + err.message);
+            }
+        }
+    </script>
+</body>
+</html> 
